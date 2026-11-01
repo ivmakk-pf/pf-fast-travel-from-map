@@ -93,7 +93,7 @@ local function turn(poll)
     poll.hovered = hovered
     -- The colors are constant tables, so a compare by identity finds a change.
     local color = logic.iconColor(hovered, state.selected)
-    if color ~= poll.color then
+    if color ~= poll.color or logic.refreshTint(poll.turns) then
         icon:SetIconColor(color)
         poll.color = color
     end
@@ -127,7 +127,10 @@ end
 ---@param findIcon BedIconFinder
 function M.start(context, ui, findIcon)
     ctx = context
+    -- A start on an open map tab keeps the gold of a bed window that is still open.
+    local selected = state.selected
     M.stop(ui)
+    state.selected = selected
     state.findIcon = findIcon
     local run = state.run
     local poll = { ui = ui, turns = 0, misses = 0, ms = 0, slow = 0 } ---@type BedHoverPoll

@@ -536,6 +536,15 @@ describe("bed_travel", function()
             assert.are.equal(0, #env.loops)
         end)
 
+        it("closes the bed window at a map load, so a later confirm does not travel", function()
+            tab(MAP_TAB)
+            env.tick()
+            press()
+            env.loadMap.pre[1]()
+            confirm()
+            assert.spy(world.pc.TeleportToLocation).was.not_called()
+        end)
+
         it("stops at a map load through the post hook when the game has no pre hook", function()
             _G.RegisterLoadMapPreHook = nil
             install()

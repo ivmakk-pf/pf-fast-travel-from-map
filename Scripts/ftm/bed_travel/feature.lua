@@ -98,6 +98,7 @@ local function bedTravelOnSelection(_, data)
         return value.DestinationName:ToString()
     end)
     if not logic.isBedSelection(value.bHasSelectedDestination, name, BED_NAME) then hover.select(false) end
+    if not ctx.config.verbose then return end
     ctx.trace(string.format("selection changed: %s '%s'", tostring(value.bHasSelectedDestination), tostring(name)))
 end
 
@@ -209,11 +210,15 @@ local function bedTravelOnLedgerTab(ui, tab)
     ctx.trace("bed pending cleared (ledger)")
 end
 
+-- A level change ends the poll with no object call, and the bed window goes with the old map.
+local function stopForLevel()
+    state.pending = false
+    hover.stop()
+end
+
 -- A map load destroys the UI manager without a ledger close, so the poll ends with no object call.
 local function watchMapLoad()
-    local stop = ctx.guard("bed map load", function()
-        hover.stop()
-    end)
+    local stop = ctx.guard("bed map load", stopForLevel)
     if type(RegisterLoadMapPreHook) == "function" then
         RegisterLoadMapPreHook(stop)
     else
@@ -234,7 +239,7 @@ local function watchQuit()
     for _, path in ipairs(QUIT_FUNCTIONS) do
         local name = path:match("[^:]+$")
         ctx.hook("bed quit", path, function()
-            hover.stop()
+            stopForLevel()
             ctx.trace("poll stopped before " .. name)
         end)
     end

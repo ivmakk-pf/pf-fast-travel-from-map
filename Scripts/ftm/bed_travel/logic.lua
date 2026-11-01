@@ -65,6 +65,16 @@ function M.iconColor(hovered, selected)
     return M.hoverColor(hovered)
 end
 
+-- True at the turns that set the tint again with no change: a new icon can get the address of the
+-- old one (freed memory comes back), so the address alone cannot show that the icon is new.
+local REFRESH_EACH = 10 -- 0.5 s
+
+---@param turns integer the turn count of this poll, from 1
+---@return boolean
+function M.refreshTint(turns)
+    return turns % REFRESH_EACH == 0
+end
+
 -- True when a change of the travel window's destination still shows the bed: the mod's own bed
 -- window. Any other change (a fast-travel point, no destination) ends the golden look.
 ---@param hasDestination boolean

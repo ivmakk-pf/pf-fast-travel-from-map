@@ -239,6 +239,30 @@ describe("bed_hover", function()
             assert.spy(current.SetIconColor).was.called_with(current, DIM)
         end)
 
+        it("keeps the gold at a new start with no stop before it", function()
+            hover.start(ctx, ui, findIcon)
+            hover.select(true)
+            env.tick()
+            hover.start(ctx, ui, findIcon)
+            env.tick()
+            assert.spy(current.SetIconColor).was.called_with(current, GOLD)
+            local calls = current.SetIconColor.calls
+            assert.are.same(GOLD, calls[#calls].vals[2])
+        end)
+
+        it("sets the gold again within 10 turns on a new icon at the address of the old one", function()
+            hover.start(ctx, ui, findIcon)
+            hover.select(true)
+            env.tick()
+            local address = current:GetAddress()
+            current = icon()
+            current.GetAddress = function()
+                return address
+            end
+            ticks(9)
+            assert.spy(current.SetIconColor).was.called_with(current, GOLD)
+        end)
+
         it("sets the gold on a new icon that comes while selected", function()
             hover.start(ctx, ui, findIcon)
             hover.select(true)
