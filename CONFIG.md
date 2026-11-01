@@ -5,7 +5,7 @@ Every setting lives in `Permafrost\Binaries\Win64\ue4ss\Mods\FastTravelFromMap\c
 | Setting | Default | Values | What it does |
 |---|---|---|---|
 | `fast_travel` | `true` | `true`, `false` | The map (M) shows your unlocked fast-travel points and lets you travel to one. `false` gives the normal map. |
-| `bed_travel` | `true` | `true`, `false` | A left click on your claimed bed on the map (M) lets you travel to the bed. `false` turns the bed travel off. |
+| `bed_travel` | `true` | `true`, `false` | A left click on your claimed bed on the map (M) lets you travel to the bed. The bed icon lights up under the mouse and turns gold while its travel window is open. `false` turns the bed travel off, and the bed icon looks as in the game. |
 | `verbose` | `false` | `true`, `false` | Writes extra lines to `UE4SS.log` for troubleshooting. Keep it off in normal play. |
 
 A value of the wrong type applies as the default. When the game cannot read the file (for example after a typo), every setting applies as the default, and the file stays as it is.

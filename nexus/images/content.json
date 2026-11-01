@@ -1,0 +1,42 @@
+{
+  "nexus": {
+    "name": "Fast Travel From Map",
+    "author": "ivmakk0",
+    "category": "Gameplay",
+    "summary": "Fast travel from the map wherever you are."
+  },
+  "thumbnail": {
+    "out": "00-thumbnail.jpg",
+    "screenshot": "bed-map.jpg",
+    "crop": [155, 461, 1920, 1080],
+    "title": [{ "text": "Fast Travel", "accent": true }, { "text": "From Map" }],
+    "rows": [
+      {
+        "icon": "UI/Icons/Map/T_bed01",
+        "iconSize": 104,
+        "caption": [{ "text": "Teleport to your" }, { "text": "claimed bed", "accent": true }]
+      },
+      {
+        "icon": "Blueprints/FastTravel/Textures/T_fastTravel01",
+        "iconSize": 108,
+        "caption": [{ "text": "Fast travel from" }, { "text": "anywhere", "accent": true }]
+      }
+    ]
+  },
+  "background": {
+    "out": "background.jpg",
+    "screenshot": "bed-map.jpg",
+    "crop": [305, 788, 2000, 572],
+    "darken": [
+      "rgba(18,25,36,0.42)",
+      "linear-gradient(90deg, rgba(18,25,36,0.75) 0%, rgba(18,25,36,0.35) 40%, rgba(18,25,36,0) 60%)",
+      "linear-gradient(0deg, rgba(18,25,36,0.7) 0%, rgba(18,25,36,0.2) 45%, rgba(18,25,36,0) 65%)"
+    ],
+    "overlays": [
+      { "kind": "path", "d": "M 1100 150 C 1060 40, 940 30, 890 80", "width": 5, "dash": "2 14" },
+      { "kind": "ring", "x": 794, "y": 42, "size": 102, "border": 4, "fill": "rgba(18,25,36,0.55)" },
+      { "kind": "icon", "icon": "UI/Icons/Map/T_bed01", "x": 815, "y": 63, "size": 60 },
+      { "kind": "icon", "icon": "Blueprints/FastTravel/Textures/T_fastTravel01", "x": 1068, "y": 128, "size": 76 }
+    ]
+  }
+}

@@ -13,15 +13,15 @@ local MAP_BP = "/Game/Permafrost/UI/Journal/Map/UW_Journal_WorldMap.UW_Journal_W
 local WORLD_MAP = "/Script/Permafrost.Widget_WorldMap"
 local INPUT_LIB = "/Script/Engine.Default__KismetInputLibrary"
 local LEFT_BUTTON = "LeftMouseButton"
-local MAP_CLASS = "UW_Journal_WorldMap_C"
 local BED_NAME = "Bed" -- the target name in the confirmation window
 -- Without these hooks the bed travel cannot work, so a failed registration fails the install.
 local REQUIRED = { required = true }
 
 local ctx = nil ---@type FtmContext
 local inputLib = nil ---@type any
--- pending: the confirmation window shows the bed. map: the map widget of the last press or hover.
-local state = { pending = false, map = nil, mapHooked = false } ---@type { pending: boolean, map: UUW_Journal_WorldMap_C?, mapHooked: boolean }
+-- pending: the confirmation window shows the bed. The feature keeps no widget between calls: the
+-- game can free a widget while IsValid still reads true, so each call gets the map again.
+local state = { pending = false, mapHooked = false } ---@type { pending: boolean, mapHooked: boolean }
 
 -- Shows the game's confirmation window with the bed, or collapses it.
 local function showWindow(map, show)
@@ -42,20 +42,32 @@ local function bedPoint(pc)
 end
 
 -- The bed icon: the map marker whose key is the name of the respawn point actor. Nil when there
--- is no claimed bed or no valid icon (yet).
+-- is no claimed bed or no valid icon (yet). The second result is the count of markers walked.
 ---@param map UUW_Journal_WorldMap_C
----@return UMapMarkerWidgetBase?
+---@return UMapMarkerWidgetBase?, integer
 local function bedIcon(map)
     local point = bedPoint(map:GetOwningPlayer())
-    if point == nil then return nil end
+    if point == nil then return nil, 0 end
     local bedName = point:GetFName():ToString()
-    local found = nil
+    local found, count = nil, 0
     local markers = map.MapMarkers ---@type any
     markers:ForEach(function(key, value)
+        count = count + 1
         if key:get():ToString() == bedName then found = value:get() end
     end)
-    if found ~= nil and ctx.valid(found) then return found end
-    return nil
+    if found ~= nil and ctx.valid(found) then return found, count end
+    return nil, count
+end
+
+-- The map widget in the ledger of the UI manager, read in this call. Nil at each invalid step.
+---@return UUW_Journal_WorldMap_C?
+local function mapOf(ui)
+    if not ctx.valid(ui) then return nil end
+    local ledger = ui.LedgerMenu
+    if not ctx.valid(ledger) then return nil end
+    local map = ledger.Panel_Map
+    if not ctx.valid(map) then return nil end
+    return map
 end
 
 ---@return string? button the key name of the pressed mouse button, nil when it cannot be read
@@ -65,11 +77,36 @@ local function pressedButton(mouseEvent)
     end)
 end
 
+-- Verbose only: is the pressed map the map that the hover and the cleanup read from the ledger?
+-- Both are read in this call, so the probe keeps no state.
+---@param map UUW_Journal_WorldMap_C
+local function traceMapIdentity(map)
+    if not ctx.config.verbose then return end
+    local same = ctx.try(function()
+        local ledgerMap = mapOf(map:GetOwningPlayer().UIManagerComp)
+        return ledgerMap ~= nil and ledgerMap:GetAddress() == map:GetAddress()
+    end)
+    ctx.trace("map press: the ledger map is " .. (same and "the same" or "different"))
+end
+
+-- Runs before the native body of the map's HandleFastTravelDestinationSelectionChanged. The game
+-- calls it at a click on a fast-travel icon and at a cancel, and the mod at its own bed window: any
+-- destination that is not the bed ends the golden look.
+local function bedTravelOnSelection(_, data)
+    local value = data:get()
+    local name = ctx.try(function()
+        return value.DestinationName:ToString()
+    end)
+    if not logic.isBedSelection(value.bHasSelectedDestination, name, BED_NAME) then hover.select(false) end
+    if not ctx.config.verbose then return end
+    ctx.trace(string.format("selection changed: %s '%s'", tostring(value.bHasSelectedDestination), tostring(name)))
+end
+
 -- Runs after the Blueprint body of the map's OnMouseButtonDown.
 local function bedTravelOnMapPress(self, _, mouseEvent)
     local map = self:get() ---@type UUW_Journal_WorldMap_C
     if not ctx.valid(map) then return end
-    state.map = map
+    traceMapIdentity(map)
     local button = pressedButton(mouseEvent)
     if button == nil then
         ctx.warnOnce("bed button", "cannot read the mouse button (a game change?); the bed travel does nothing")
@@ -83,6 +120,7 @@ local function bedTravelOnMapPress(self, _, mouseEvent)
     end
     showWindow(map, true)
     state.pending = true
+    hover.select(true)
     ctx.trace("bed window opened")
 end
 
@@ -126,6 +164,7 @@ local function bedTravelOnConfirm(self)
     if action == "none" then return end
     if action == "vanilla" and state.pending then ctx.trace("bed pending cleared (fast travel)") end
     state.pending = false
+    hover.select(false)
     if action == "bed" then travelToBed(map) end
 end
 
@@ -133,6 +172,7 @@ end
 local function bedTravelOnCancel()
     if not state.pending then return end
     state.pending = false
+    hover.select(false)
     ctx.trace("bed pending cleared (cancel)")
 end
 
@@ -146,32 +186,63 @@ local function armMapHooks()
     end
 end
 
--- The bed icon for the hover poll. One FindFirstOf for each map-tab open, at the first turn, only
--- without a cached map.
----@param turn integer
----@return UMapMarkerWidgetBase?
-local function hoverIcon(turn)
-    if turn == 1 and not ctx.valid(state.map) then
-        state.map = FindFirstOf(MAP_CLASS) --[[@as UUW_Journal_WorldMap_C?]]
-    end
-    local map = state.map
-    if map == nil or not ctx.valid(map) then return nil end
+-- The bed icon for the hover poll, read from the UI manager in this call.
+---@return UMapMarkerWidgetBase?, integer?
+local function hoverIcon(ui)
+    local map = mapOf(ui)
+    if map == nil then return nil, nil end
     return bedIcon(map)
 end
 
 ---@param tab integer
-local function bedTravelOnLedgerTab(_, tab)
+local function bedTravelOnLedgerTab(ui, tab)
     local action = logic.onLedgerTab(isMapTab(tab), state.pending)
     if action == "map" then
         armMapHooks()
-        hover.start(ctx, hoverIcon)
+        hover.start(ctx, ui, hoverIcon)
         return
     end
-    hover.stop()
+    hover.stop(ui)
     if action ~= "clear" then return end
     state.pending = false
-    if ctx.valid(state.map) then showWindow(state.map, false) end
+    local map = mapOf(ui)
+    if map ~= nil then showWindow(map, false) end
     ctx.trace("bed pending cleared (ledger)")
+end
+
+-- A level change ends the poll with no object call, and the bed window goes with the old map.
+local function stopForLevel()
+    state.pending = false
+    hover.stop()
+end
+
+-- A map load destroys the UI manager without a ledger close, so the poll ends with no object call.
+local function watchMapLoad()
+    local stop = ctx.guard("bed map load", stopForLevel)
+    if type(RegisterLoadMapPreHook) == "function" then
+        RegisterLoadMapPreHook(stop)
+    else
+        RegisterLoadMapPostHook(stop)
+    end
+end
+
+-- A quit or a level change from the game menu can come with the map tab open, and a quit to the
+-- desktop gives no map load. So the poll also ends before these. The callbacks read no parameter:
+-- a soft object read can crash this UE4SS build.
+local QUIT_FUNCTIONS = {
+    "/Script/Engine.KismetSystemLibrary:QuitGame",
+    "/Script/Engine.GameplayStatics:OpenLevel",
+    "/Script/Engine.GameplayStatics:OpenLevelBySoftObjectPtr",
+}
+
+local function watchQuit()
+    for _, path in ipairs(QUIT_FUNCTIONS) do
+        local name = path:match("[^:]+$")
+        ctx.hook("bed quit", path, function()
+            stopForLevel()
+            ctx.trace("poll stopped before " .. name)
+        end)
+    end
 end
 
 ---@param context FtmContext
@@ -181,7 +252,10 @@ function M.install(context)
     if not ctx.valid(inputLib) then error("no " .. INPUT_LIB) end
     ctx.hook("bed confirm", WORLD_MAP .. ":HandleFastTravelConfirmationConfirmed", bedTravelOnConfirm, REQUIRED)
     ctx.hook("bed cancel", WORLD_MAP .. ":HandleFastTravelConfirmationCancelled", bedTravelOnCancel, REQUIRED)
+    ctx.hook("bed selection", WORLD_MAP .. ":HandleFastTravelDestinationSelectionChanged", bedTravelOnSelection)
     ledgerTab.listen(ctx, "bed ledger tab", bedTravelOnLedgerTab)
+    watchMapLoad()
+    watchQuit()
 end
 
 return M

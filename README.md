@@ -1,4 +1,4 @@
-![version](https://img.shields.io/badge/version-1.0.0-blue) ![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+![version](https://img.shields.io/badge/version-1.1.0-blue) ![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
 
 # Fast Travel From Map
 
@@ -9,7 +9,7 @@ To fast travel, you must first walk to a fast-travel point, and your bed is neve
 ## Features
 
 - **Fast travel**: the map (M) shows your unlocked fast-travel points, the same as the map of a fast-travel point. Click one to open the game's travel window, then confirm. Locked points stay locked.
-- **Bed travel**: click your claimed bed on the map to travel to it.
+- **Bed travel**: click your claimed bed on the map to travel to it. The bed icon lights up under the mouse and turns gold while its travel window is open, as a fast-travel point does.
 - **The game's own travel**: each trip uses the game's travel window, screen fade, and loading of the area.
 
 ## Save safety

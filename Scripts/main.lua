@@ -1,7 +1,7 @@
 -- FastTravelFromMap: travel from the normal map (M). Features: the fast travel to an unlocked
 -- fast-travel point, and the travel to the player's claimed bed.
 local MOD = "FastTravelFromMap"
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 
 local SCHEMA = require("ftm.core.schema")
 

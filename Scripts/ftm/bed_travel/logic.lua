@@ -52,37 +52,65 @@ function M.hoverColor(hovered)
     return hovered and HOVER_COLOR or DIM_COLOR
 end
 
--- The color to set at a poll turn: only at the first turn (previous nil) and when the hover changes.
----@param previous boolean? the hover state of the last turn
+-- The gold of a selected fast-travel icon: the tint of the Pressed brush of its button, which the
+-- game shows while the point is the target of the travel window (read in game, build 26265449).
+local SELECTED_COLOR = { R = 0.64, G = 0.31, B = 0, A = 1 }
+
+-- The bed icon tint: the gold while the travel window shows the bed, else the hover look.
 ---@param hovered boolean
----@return table? color
-function M.hoverChange(previous, hovered)
-    if previous == hovered then return nil end
+---@param selected boolean
+---@return table color an FLinearColor
+function M.iconColor(hovered, selected)
+    if selected then return SELECTED_COLOR end
     return M.hoverColor(hovered)
 end
 
--- The hover poll runs each 50 ms while the map tab is open. The map makes its icons when the tab
--- opens (after a travel it makes new ones while the old ones stay valid), so the poll looks the icon
--- up again in the first seconds only. After that a turn is one validity check and one IsHovered read.
-local GIVE_UP_TURNS = 20 -- the find of the icon tries for 1 s after the map tab opens
-local REFIND_EACH = 10 -- the poll looks the icon up again each 0.5 s ...
-local REFIND_UNTIL = 60 -- ... for the first 3 s after the map tab opens
+-- True at the turns that set the tint again with no change: a new icon can get the address of the
+-- old one (freed memory comes back), so the address alone cannot show that the icon is new.
+local REFRESH_EACH = 10 -- 0.5 s
 
--- What a poll turn does with the bed icon: look it up ("find") or use the one it has ("keep").
----@param turns integer the turn count of this map-tab open, from 1
----@param hasIcon boolean the poll has a valid icon from an earlier turn
----@return "find"|"keep"
-function M.hoverTurn(turns, hasIcon)
-    if not hasIcon then return "find" end
-    if turns <= REFIND_UNTIL and turns % REFIND_EACH == 0 then return "find" end
-    return "keep"
+---@param turns integer the turn count of this poll, from 1
+---@return boolean
+function M.refreshTint(turns)
+    return turns % REFRESH_EACH == 0
 end
 
--- True when a turn that found no icon ends the poll.
----@param turns integer
+-- True when a change of the travel window's destination still shows the bed: the mod's own bed
+-- window. Any other change (a fast-travel point, no destination) ends the golden look.
+---@param hasDestination boolean
+---@param name string? the destination name, nil when it cannot be read
+---@param bedName string the destination name of the mod's bed window
 ---@return boolean
-function M.hoverGiveUp(turns)
-    return turns > GIVE_UP_TURNS
+function M.isBedSelection(hasDestination, name, bedName)
+    return hasDestination == true and name == bedName
+end
+
+-- The hover poll runs each 50 ms while the map tab is open, and looks the icon up at each turn: the
+-- map makes its icons again (after a travel, and when it updates its markers).
+local GIVE_UP_TURNS = 20 -- the poll ends after 1 s of turns with no icon
+
+-- True when the icon of this turn is not the icon of the turn before (by address).
+---@param previousAddress integer?
+---@param address integer?
+---@return boolean
+function M.iconChanged(previousAddress, address)
+    return previousAddress ~= address
+end
+
+-- The count of consecutive turns with no icon: a found icon sets it back to 0.
+---@param previous integer
+---@param found boolean
+---@return integer
+function M.missTurns(previous, found)
+    if found then return 0 end
+    return previous + 1
+end
+
+-- True when the consecutive turns with no icon end the poll.
+---@param missTurns integer
+---@return boolean
+function M.hoverGiveUp(missTurns)
+    return missTurns > GIVE_UP_TURNS
 end
 
 -- What a ledger-tab change does to the bed travel: on the map tab, arm the map hook and start the
