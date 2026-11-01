@@ -68,51 +68,73 @@ describe("hoverColor", function()
     end)
 end)
 
-describe("hoverChange", function()
-    it("sets the color at the first turn", function()
-        assert.are.equal(0.75, logic.hoverChange(nil, false).R)
-        assert.are.equal(1, logic.hoverChange(nil, true).R)
+describe("iconColor", function()
+    it("is the vanilla gold of a selected fast-travel icon while selected, with and without hover", function()
+        for _, hovered in ipairs({ true, false }) do
+            local c = logic.iconColor(hovered, true)
+            assert.are.same({ R = 0.64, G = 0.31, B = 0, A = 1 }, c)
+        end
     end)
 
-    it("sets the color when the hover changes", function()
-        assert.are.equal(1, logic.hoverChange(false, true).R)
-        assert.are.equal(0.75, logic.hoverChange(true, false).R)
-    end)
-
-    it("sets nothing when the hover stays", function()
-        assert.are.equal(nil, logic.hoverChange(true, true))
-        assert.are.equal(nil, logic.hoverChange(false, false))
+    it("is the hover color when not selected", function()
+        assert.are.equal(logic.hoverColor(true), logic.iconColor(true, false))
+        assert.are.equal(logic.hoverColor(false), logic.iconColor(false, false))
     end)
 end)
 
-describe("hoverTurn", function()
-    it("looks the icon up at each turn without an icon", function()
-        for _, turn in ipairs({ 1, 2, 3, 61, 200 }) do
-            assert.are.equal("find", logic.hoverTurn(turn, false))
-        end
+describe("isBedSelection", function()
+    it("is true only for a selection with the bed name", function()
+        assert.is_true(logic.isBedSelection(true, "Bed", "Bed"))
     end)
 
-    it("looks the icon up again each 10 turns for the first 60 turns", function()
-        for _, turn in ipairs({ 10, 20, 30, 40, 50, 60 }) do
-            assert.are.equal("find", logic.hoverTurn(turn, true))
-        end
+    it("is false for another destination, for no selection, and for an unread name", function()
+        assert.is_false(logic.isBedSelection(true, "Church", "Bed"))
+        assert.is_false(logic.isBedSelection(false, "Bed", "Bed"))
+        assert.is_false(logic.isBedSelection(true, nil, "Bed"))
+    end)
+end)
+
+describe("iconChanged", function()
+    it("is true when an icon comes, changes, or goes", function()
+        assert.is_true(logic.iconChanged(nil, 100))
+        assert.is_true(logic.iconChanged(100, 200))
+        assert.is_true(logic.iconChanged(100, nil))
     end)
 
-    it("keeps the icon at the other turns, and after turn 60", function()
-        for _, turn in ipairs({ 1, 9, 11, 59, 61, 70, 120 }) do
-            assert.are.equal("keep", logic.hoverTurn(turn, true))
-        end
+    it("is false for the same icon, and with no icon before and after", function()
+        assert.is_false(logic.iconChanged(100, 100))
+        assert.is_false(logic.iconChanged(nil, nil))
+    end)
+end)
+
+describe("missTurns", function()
+    it("counts the consecutive turns with no icon", function()
+        assert.are.equal(1, logic.missTurns(0, false))
+        assert.are.equal(21, logic.missTurns(20, false))
+    end)
+
+    it("goes back to 0 when a turn finds the icon", function()
+        assert.are.equal(0, logic.missTurns(15, true))
     end)
 end)
 
 describe("hoverGiveUp", function()
-    it("keeps looking for an icon for the first 20 turns (1 s)", function()
+    it("keeps looking for an icon for 20 consecutive misses (1 s)", function()
         assert.is_false(logic.hoverGiveUp(1))
         assert.is_false(logic.hoverGiveUp(20))
     end)
 
-    it("gives up after turn 20", function()
+    it("gives up after 20 consecutive misses", function()
         assert.is_true(logic.hoverGiveUp(21))
+    end)
+
+    it("does not give up for one miss late in the poll", function()
+        local misses = 0
+        for _ = 1, 29 do
+            misses = logic.missTurns(misses, true)
+        end
+        misses = logic.missTurns(misses, false)
+        assert.is_false(logic.hoverGiveUp(misses))
     end)
 end)
 

@@ -1,0 +1,3 @@
+v1.1.0 - 2026-11-01
+Added: The bed icon on the map turns gold while its travel window is open, as a selected fast-travel point does.
+Fixed: The game no longer crashes when you close the ledger, or quit the game, after the map was open.

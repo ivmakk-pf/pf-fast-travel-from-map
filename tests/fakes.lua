@@ -14,6 +14,8 @@ local NAMES = {
     "LoopAsync",
     "StaticFindObject",
     "FindFirstOf",
+    "RegisterLoadMapPreHook",
+    "RegisterLoadMapPostHook",
     "FName",
     "FText",
     "print",
@@ -28,6 +30,7 @@ local nextAddress = 0x1000
 ---@field printed string[] each print line
 ---@field objects table<string, any> what StaticFindObject finds, by path
 ---@field firstOf table<string, any> what FindFirstOf finds, by class name
+---@field loadMap { pre: function[], post: function[] } the map-load callbacks
 ---@field failHook string? RegisterHook throws for a path with this suffix (a test can set it later)
 ---@field failWatch boolean? NotifyOnNewObject throws while it is true
 ---@field spy table<string, any> the fake of each global, for assert.spy(env.spy.RegisterHook)
@@ -41,7 +44,15 @@ function M.install(opts)
     for _, name in ipairs(NAMES) do
         saved[name] = rawget(_G, name)
     end
-    local env = { hooks = {}, watchers = {}, loops = {}, printed = {}, objects = {}, firstOf = {} }
+    local env = {
+        hooks = {},
+        watchers = {},
+        loops = {},
+        printed = {},
+        objects = {},
+        firstOf = {},
+        loadMap = { pre = {}, post = {} },
+    }
     env.failHook = opts.failHook
     local ids = 0
 
@@ -73,6 +84,14 @@ function M.install(opts)
         FindFirstOf = spy.new(function(class)
             return env.firstOf[class]
         end),
+        -- Plain functions, not spies: a mod checks `type(RegisterLoadMapPreHook) == "function"`,
+        -- and a spy is a callable table.
+        RegisterLoadMapPreHook = function(fn)
+            env.loadMap.pre[#env.loadMap.pre + 1] = fn
+        end,
+        RegisterLoadMapPostHook = function(fn)
+            env.loadMap.post[#env.loadMap.post + 1] = fn
+        end,
         FName = function(s)
             return s
         end,

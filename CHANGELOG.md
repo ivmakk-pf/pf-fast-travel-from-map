@@ -4,6 +4,16 @@ All notable changes to this mod are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-01
+
+### Added
+
+- Gold bed icon on the map while its travel window is open, as on a selected fast-travel point.
+
+### Fixed
+
+- Game crash when you closed the ledger, or quit the game, after the map was open.
+
 ## [1.0.0] - 2026-11-01
 
 ### Added

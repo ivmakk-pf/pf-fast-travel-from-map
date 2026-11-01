@@ -82,8 +82,24 @@ describe("bed_travel", function()
             end,
             HandleFastTravelDestinationSelectionChanged = spy.new(function() end),
         })
-        w.ui = fakes.object({ class = "BPC_UserInterfaceManager_C" })
+        w.ledger = fakes.object({ Panel_Map = w.map })
+        w.pc.UIManagerComp = fakes.object({ CloseLedger = w.pc.UIManagerComp.CloseLedger, LedgerMenu = w.ledger })
+        w.ui = fakes.object({ class = "BPC_UserInterfaceManager_C", LedgerMenu = w.ledger })
         return w
+    end
+
+    -- A second map widget in the ledger, as after the game makes the map again.
+    local function newMap()
+        local map = fakes.object({
+            class = "UW_Journal_WorldMap_C",
+            MapMarkers = markers({ BP_Bed_1 = world.icon }),
+            GetOwningPlayer = function()
+                return world.pc
+            end,
+            HandleFastTravelDestinationSelectionChanged = spy.new(function() end),
+        })
+        world.ledger.Panel_Map = map
+        return map
     end
 
     local function install()
@@ -186,6 +202,24 @@ describe("bed_travel", function()
             assert.are.equal(1, #windowCalls())
         end)
 
+        it("traces that the pressed map is the map of the ledger", function()
+            press("RightMouseButton")
+            assert.are.equal(1, lines("map press: the ledger map is the same"))
+        end)
+
+        it("traces a pressed map that is not the map of the ledger", function()
+            local pressed = world.map
+            newMap()
+            env.hooks[PRESS](fakes.param(pressed), fakes.param({}), fakes.param({ button = "RightMouseButton" }))
+            assert.are.equal(1, lines("map press: the ledger map is different"))
+        end)
+
+        it("traces nothing at a press without verbose", function()
+            ctx.config.verbose = false
+            press("RightMouseButton")
+            assert.are.equal(0, lines("map press:"))
+        end)
+
         it("does nothing for a right press", function()
             press("RightMouseButton")
             assert.are.equal(0, #windowCalls())
@@ -282,35 +316,236 @@ describe("bed_travel", function()
             assert.spy(world.pc.TeleportToLocation).was.not_called()
             assert.are.equal(1, lines("bed pending cleared %(ledger%)"))
         end)
+
+        it("on a ledger close, on the map of the UI manager, not on the map of the press", function()
+            local pressed = world.map
+            local current = newMap()
+            tab(0)
+            assert.are.equal(1, #pressed.HandleFastTravelDestinationSelectionChanged.calls)
+            assert.spy(current.HandleFastTravelDestinationSelectionChanged).was.called(1)
+        end)
+
+        it("on a ledger close with no valid map, with no error", function()
+            world.ledger.Panel_Map.destroyed = true
+            tab(0)
+            assert.are.equal(1, #windowCalls())
+            assert.are.equal(1, lines("bed pending cleared %(ledger%)"))
+            assert.are.equal(0, lines("WARN"))
+        end)
+    end)
+
+    describe("the selection hook", function()
+        local SELECTION = WORLD_MAP .. ":HandleFastTravelDestinationSelectionChanged"
+
+        local function select(has, name)
+            env.hooks[SELECTION](
+                fakes.param(world.map),
+                fakes.param({
+                    bHasSelectedDestination = has,
+                    DestinationName = {
+                        ToString = function()
+                            return name
+                        end,
+                    },
+                })
+            )
+        end
+
+        it("traces each selection change with the destination name", function()
+            select(true, "Old Mill")
+            select(false, "")
+            assert.are.equal(1, lines("selection changed: true 'Old Mill'"))
+            assert.are.equal(1, lines("selection changed: false ''"))
+        end)
+
+        it("traces nothing without verbose", function()
+            ctx.config.verbose = false
+            select(true, "Old Mill")
+            assert.are.equal(0, lines("selection changed"))
+        end)
+
+        it("warns once and keeps the rest when the hook cannot register", function()
+            env.failHook = ":HandleFastTravelDestinationSelectionChanged"
+            install()
+            assert.are.equal(1, lines("WARN bed selection hook failed"))
+        end)
+    end)
+
+    describe("the golden look", function()
+        local GOLD = require("ftm.bed_travel.logic").iconColor(false, true)
+        local SELECTION = WORLD_MAP .. ":HandleFastTravelDestinationSelectionChanged"
+
+        local function select(has, name)
+            env.hooks[SELECTION](
+                fakes.param(world.map),
+                fakes.param({
+                    bHasSelectedDestination = has,
+                    DestinationName = {
+                        ToString = function()
+                            return name
+                        end,
+                    },
+                })
+            )
+        end
+
+        local function lastColor()
+            local calls = world.icon.SetIconColor.calls
+            return calls[#calls].vals[2]
+        end
+
+        before_each(function()
+            tab(MAP_TAB)
+            env.tick()
+            press()
+            env.tick()
+        end)
+
+        it("is on after a press on the bed icon, also with the mouse on the icon", function()
+            assert.are.same(GOLD, lastColor())
+            world.icon.hovered = false
+            env.tick()
+            assert.are.same(GOLD, lastColor())
+        end)
+
+        it("stays on for the mod's own bed selection", function()
+            select(true, "Bed")
+            env.tick()
+            assert.are.same(GOLD, lastColor())
+        end)
+
+        it("goes off at a cancel", function()
+            env.hooks[CANCEL](fakes.param(world.map))
+            env.tick()
+            assert.are_not.same(GOLD, lastColor())
+        end)
+
+        it("goes off at a click on a fast-travel icon", function()
+            select(true, "Church")
+            env.tick()
+            assert.are_not.same(GOLD, lastColor())
+        end)
+
+        it("goes off when the game collapses the window", function()
+            select(false, "")
+            env.tick()
+            assert.are_not.same(GOLD, lastColor())
+        end)
+
+        it("goes off at a confirm of a fast-travel point", function()
+            world.manager.selected = true
+            confirm()
+            env.tick()
+            assert.are_not.same(GOLD, lastColor())
+        end)
+
+        it("is off at the next map-tab open after a ledger close", function()
+            tab(0)
+            assert.are.same(require("ftm.bed_travel.logic").hoverColor(true), lastColor())
+            tab(MAP_TAB)
+            env.tick()
+            assert.are_not.same(GOLD, lastColor())
+        end)
     end)
 
     describe("the hover", function()
-        it("finds the map at the first turn and tints the bed icon", function()
+        it("finds the bed icon through the UI manager and does not search", function()
             world.icon.hovered = false
-            env.firstOf["UW_Journal_WorldMap_C"] = world.map
-            tab(MAP_TAB)
-            env.tick()
-            assert.spy(env.spy.FindFirstOf).was.called(1)
-            assert.spy(world.icon.SetIconColor).was.called(1)
-        end)
-
-        it("uses the map of the last press and does not search", function()
-            tab(MAP_TAB)
-            press()
             tab(MAP_TAB)
             env.tick()
             assert.spy(env.spy.FindFirstOf).was.not_called()
             assert.spy(world.icon.SetIconColor).was.called(1)
         end)
 
+        it("follows a new map widget at the next turn", function()
+            tab(MAP_TAB)
+            env.tick()
+            local icon = world.icon
+            world.icon = fakes.object({
+                IsHovered = spy.new(function()
+                    return false
+                end),
+                SetIconColor = spy.new(function() end),
+            })
+            newMap()
+            env.tick()
+            assert.spy(world.icon.SetIconColor).was.called(1)
+            assert.spy(icon.SetIconColor).was.called(1)
+        end)
+
+        it("sets nothing while the ledger has no valid map, and stops after 1 s", function()
+            world.ledger.destroyed = true
+            tab(MAP_TAB)
+            for _ = 1, 22 do
+                env.tick()
+            end
+            assert.spy(world.icon.SetIconColor).was.not_called()
+            assert.are.equal(0, #env.loops)
+            assert.are.equal(0, lines("WARN"))
+        end)
+
         it("stops on a ledger close and sets the icon back to white", function()
-            env.firstOf["UW_Journal_WorldMap_C"] = world.map
             tab(MAP_TAB)
             env.tick()
             tab(0)
             env.tick()
             assert.are.equal(0, #env.loops)
             assert.spy(world.icon.SetIconColor).was.called(2)
+        end)
+
+        it("stops at a map load and touches no object", function()
+            tab(MAP_TAB)
+            env.tick()
+            env.loadMap.pre[1]()
+            env.tick()
+            assert.are.equal(0, #env.loops)
+            assert.spy(world.icon.SetIconColor).was.called(1)
+        end)
+
+        for _, fn in ipairs({
+            "/Script/Engine.KismetSystemLibrary:QuitGame",
+            "/Script/Engine.GameplayStatics:OpenLevel",
+            "/Script/Engine.GameplayStatics:OpenLevelBySoftObjectPtr",
+        }) do
+            it("stops before " .. fn .. " and touches no object and no parameter", function()
+                tab(MAP_TAB)
+                env.tick()
+                local param = setmetatable({}, {
+                    __index = function()
+                        error("a parameter was read")
+                    end,
+                })
+                env.hooks[fn](param, param, param, param, param)
+                env.tick()
+                assert.are.equal(0, #env.loops)
+                assert.spy(world.icon.SetIconColor).was.called(1)
+                assert.are.equal(1, lines("poll stopped before " .. fn:match("[^:]+$")))
+                assert.are.equal(0, lines("WARN"))
+            end)
+        end
+
+        it("warns once and keeps the rest when a quit hook cannot register", function()
+            env.failHook = ":QuitGame"
+            install()
+            env.watchers[UI_MANAGER](world.ui)
+            assert.are.equal(1, lines("WARN bed quit hook failed"))
+            tab(MAP_TAB)
+            env.tick()
+            env.hooks["/Script/Engine.GameplayStatics:OpenLevel"]()
+            env.tick()
+            assert.are.equal(0, #env.loops)
+        end)
+
+        it("stops at a map load through the post hook when the game has no pre hook", function()
+            _G.RegisterLoadMapPreHook = nil
+            install()
+            env.watchers[UI_MANAGER](world.ui)
+            assert.are.equal(1, #env.loadMap.post)
+            tab(MAP_TAB)
+            env.tick()
+            env.loadMap.post[1]()
+            env.tick()
+            assert.are.equal(0, #env.loops)
         end)
     end)
 end)
