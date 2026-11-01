@@ -29,7 +29,7 @@ Tested only in single player. Each player can install it or not: it changes only
 
 **Vortex (recommended):**
 
-1. Click **Vortex** at the top of the Nexus page *(needs the [Permafrost Vortex Extension](https://www.nexusmods.com/site/mods/2466), which also installs UE4SS)*.
+1. Click **Vortex** at the top of the [Nexus page](https://www.nexusmods.com/permafrost/mods/41) *(needs the [Permafrost Vortex Extension](https://www.nexusmods.com/site/mods/2466), which also installs UE4SS)*.
 
 **Manual installation:**
 
