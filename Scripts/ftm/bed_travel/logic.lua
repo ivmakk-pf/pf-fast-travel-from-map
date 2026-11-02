@@ -65,14 +65,14 @@ function M.iconColor(hovered, selected)
     return M.hoverColor(hovered)
 end
 
--- True at the turns that set the tint again with no change: a new icon can get the address of the
+-- True at the checks that set the tint again with no change: a new icon can get the address of the
 -- old one (freed memory comes back), so the address alone cannot show that the icon is new.
 local REFRESH_EACH = 10 -- 0.5 s
 
----@param turns integer the turn count of this poll, from 1
+---@param checks integer the check count since the last reset, from 1
 ---@return boolean
-function M.refreshTint(turns)
-    return turns % REFRESH_EACH == 0
+function M.refreshTint(checks)
+    return checks % REFRESH_EACH == 0
 end
 
 -- True when a change of the travel window's destination still shows the bed: the mod's own bed
@@ -85,11 +85,8 @@ function M.isBedSelection(hasDestination, name, bedName)
     return hasDestination == true and name == bedName
 end
 
--- The hover poll runs each 50 ms while the map tab is open, and looks the icon up at each turn: the
--- map makes its icons again (after a travel, and when it updates its markers).
-local GIVE_UP_TURNS = 20 -- the poll ends after 1 s of turns with no icon
-
--- True when the icon of this turn is not the icon of the turn before (by address).
+-- True when the icon of this check is not the icon of the check before (by address): the map makes
+-- its icons again (after a travel, and when it updates its markers).
 ---@param previousAddress integer?
 ---@param address integer?
 ---@return boolean
@@ -97,31 +94,15 @@ function M.iconChanged(previousAddress, address)
     return previousAddress ~= address
 end
 
--- The count of consecutive turns with no icon: a found icon sets it back to 0.
----@param previous integer
----@param found boolean
----@return integer
-function M.missTurns(previous, found)
-    if found then return 0 end
-    return previous + 1
-end
-
--- True when the consecutive turns with no icon end the poll.
----@param missTurns integer
----@return boolean
-function M.hoverGiveUp(missTurns)
-    return missTurns > GIVE_UP_TURNS
-end
-
--- What a ledger-tab change does to the bed travel: on the map tab, arm the map hook and start the
--- hover ("map"); on another tab or a close, stop the hover, and close an open bed window ("clear").
+-- What a ledger-tab change does to the bed travel: on the map tab, arm the map hooks ("map"); on
+-- another tab or a close, reset the hover, and close an open bed window ("clear").
 ---@param isMap boolean the ledger now shows the map tab
 ---@param pending boolean the bed window is open
----@return "map"|"clear"|"stop"
+---@return "map"|"clear"|"reset"
 function M.onLedgerTab(isMap, pending)
     if isMap then return "map" end
     if pending then return "clear" end
-    return "stop"
+    return "reset"
 end
 
 return M

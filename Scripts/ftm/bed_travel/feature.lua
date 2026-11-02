@@ -84,7 +84,7 @@ local function pressedButton(mouseEvent)
     end)
 end
 
--- Verbose only: is the pressed map the map that the hover and the cleanup read from the ledger?
+-- Verbose only: is the pressed map the map that the ledger-close cleanup reads from the ledger?
 -- Both are read in this call, so the probe keeps no state.
 ---@param map UUW_Journal_WorldMap_C
 local function traceMapIdentity(map)
@@ -183,7 +183,13 @@ local function bedTravelOnCancel()
     ctx.trace("bed pending cleared (cancel)")
 end
 
--- The map widget class is loaded at the first map-tab open, so its hook registers then, once.
+-- Runs after the Blueprint body of the map's Tick: each frame while the map shows, on the game
+-- thread. The hover reads only this map and the objects under it, in this call.
+local function bedTravelOnMapTick(self)
+    hover.onTick(self, bedIcon, os.clock())
+end
+
+-- The map widget class is loaded at the first map-tab open, so its hooks register then, once.
 -- A drag of the map does not close the bed window: the game's fast-travel window stays open too.
 local function armMapHooks()
     if state.mapHooked then return end
@@ -191,14 +197,7 @@ local function armMapHooks()
     if ctx.hook("bed press", MAP_BP .. ":OnMouseButtonDown", bedTravelOnMapPress) then
         ctx.trace("map press hook armed")
     end
-end
-
--- The bed icon for the hover poll, read from the UI manager in this call.
----@return UMapMarkerWidgetBase?, integer?
-local function hoverIcon(ui)
-    local map = mapOf(ui)
-    if map == nil then return nil, nil end
-    return bedIcon(map)
+    if ctx.hook("bed hover", MAP_BP .. ":Tick", bedTravelOnMapTick) then ctx.trace("map tick hook armed") end
 end
 
 ---@param tab integer
@@ -206,10 +205,9 @@ local function bedTravelOnLedgerTab(ui, tab)
     local action = logic.onLedgerTab(isMapTab(tab), state.pending)
     if action == "map" then
         armMapHooks()
-        hover.start(ctx, ui, hoverIcon)
         return
     end
-    hover.stop(ui)
+    hover.reset()
     if action ~= "clear" then return end
     state.pending = false
     local map = mapOf(ui)
@@ -217,44 +215,25 @@ local function bedTravelOnLedgerTab(ui, tab)
     ctx.trace("bed pending cleared (ledger)")
 end
 
--- A level change ends the poll with no object call, and the bed window goes with the old map.
-local function stopForLevel()
+-- A level change resets the hover with no object call, and the bed window goes with the old map.
+local function resetForLevel()
     state.pending = false
-    hover.stop()
+    hover.reset()
 end
 
--- A map load destroys the UI manager without a ledger close, so the poll ends with no object call.
 local function watchMapLoad()
-    local stop = ctx.guard("bed map load", stopForLevel)
+    local reset = ctx.guard("bed map load", resetForLevel)
     if type(RegisterLoadMapPreHook) == "function" then
-        RegisterLoadMapPreHook(stop)
+        RegisterLoadMapPreHook(reset)
     else
-        RegisterLoadMapPostHook(stop)
-    end
-end
-
--- A quit or a level change from the game menu can come with the map tab open, and a quit to the
--- desktop gives no map load. So the poll also ends before these. The callbacks read no parameter:
--- a soft object read can crash this UE4SS build.
-local QUIT_FUNCTIONS = {
-    "/Script/Engine.KismetSystemLibrary:QuitGame",
-    "/Script/Engine.GameplayStatics:OpenLevel",
-    "/Script/Engine.GameplayStatics:OpenLevelBySoftObjectPtr",
-}
-
-local function watchQuit()
-    for _, path in ipairs(QUIT_FUNCTIONS) do
-        local name = path:match("[^:]+$")
-        ctx.hook("bed quit", path, function()
-            stopForLevel()
-            ctx.trace("poll stopped before " .. name)
-        end)
+        RegisterLoadMapPostHook(reset)
     end
 end
 
 ---@param context FtmContext
 function M.install(context)
     ctx = context
+    hover.install(ctx)
     inputLib = StaticFindObject(INPUT_LIB)
     if not ctx.valid(inputLib) then error("no " .. INPUT_LIB) end
     ctx.hook("bed confirm", WORLD_MAP .. ":HandleFastTravelConfirmationConfirmed", bedTravelOnConfirm, REQUIRED)
@@ -262,7 +241,6 @@ function M.install(context)
     ctx.hook("bed selection", WORLD_MAP .. ":HandleFastTravelDestinationSelectionChanged", bedTravelOnSelection)
     ledgerTab.listen(ctx, "bed ledger tab", bedTravelOnLedgerTab)
     watchMapLoad()
-    watchQuit()
 end
 
 return M

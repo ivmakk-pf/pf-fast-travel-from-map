@@ -9,6 +9,7 @@ All notable changes to this mod are documented in this file. The format is based
 ### Changed
 
 - Less work while the map is open: the mod finds your bed icon by its name, not by a check of every icon on the map.
+- The bed icon's hover look now updates with the map itself, only while the map is on screen. The mod no longer runs a timer in the background while the map tab is open.
 
 ## [1.1.0] - 2026-11-01
 

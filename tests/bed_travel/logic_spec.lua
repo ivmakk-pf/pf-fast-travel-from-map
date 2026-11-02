@@ -120,48 +120,17 @@ describe("iconChanged", function()
     end)
 end)
 
-describe("missTurns", function()
-    it("counts the consecutive turns with no icon", function()
-        assert.are.equal(1, logic.missTurns(0, false))
-        assert.are.equal(21, logic.missTurns(20, false))
-    end)
-
-    it("goes back to 0 when a turn finds the icon", function()
-        assert.are.equal(0, logic.missTurns(15, true))
-    end)
-end)
-
-describe("hoverGiveUp", function()
-    it("keeps looking for an icon for 20 consecutive misses (1 s)", function()
-        assert.is_false(logic.hoverGiveUp(1))
-        assert.is_false(logic.hoverGiveUp(20))
-    end)
-
-    it("gives up after 20 consecutive misses", function()
-        assert.is_true(logic.hoverGiveUp(21))
-    end)
-
-    it("does not give up for one miss late in the poll", function()
-        local misses = 0
-        for _ = 1, 29 do
-            misses = logic.missTurns(misses, true)
-        end
-        misses = logic.missTurns(misses, false)
-        assert.is_false(logic.hoverGiveUp(misses))
-    end)
-end)
-
 describe("onLedgerTab", function()
     it("arms the map hook and starts the hover on the map tab", function()
         assert.are.equal("map", logic.onLedgerTab(true, false))
         assert.are.equal("map", logic.onLedgerTab(true, true))
     end)
 
-    it("stops the hover and closes the bed window on another tab when the window is open", function()
+    it("resets the hover and closes the bed window on another tab when the window is open", function()
         assert.are.equal("clear", logic.onLedgerTab(false, true))
     end)
 
-    it("only stops the hover on another tab with no bed window", function()
-        assert.are.equal("stop", logic.onLedgerTab(false, false))
+    it("only resets the hover on another tab with no bed window", function()
+        assert.are.equal("reset", logic.onLedgerTab(false, false))
     end)
 end)
