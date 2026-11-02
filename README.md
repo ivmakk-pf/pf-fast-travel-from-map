@@ -28,7 +28,7 @@ Tested only in single player. Each player can install it or not: it changes only
 ## Installation
 
 1. Install [UE4SS for Permafrost](https://www.nexusmods.com/permafrost/mods/42).
-2. Extract this mod's zip into the game folder (the folder with Permafrost.exe). The mod lands in Permafrost\Binaries\Win64\ue4ss\Mods. Full path example:
+2. Extract this mod's zip into the game folder (the folder with Permafrost.exe). The mod lands in Permafrost\Binaries\Win64\ue4ss\Mods. Full path example for Steam:
    `C:\Program Files (x86)\Steam\steamapps\common\Permafrost\Permafrost\Binaries\Win64\ue4ss\Mods\FastTravelFromMap`
 
 ## Uninstall
