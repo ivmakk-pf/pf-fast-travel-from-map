@@ -1,4 +1,4 @@
-![version](https://img.shields.io/badge/version-1.1.0-blue) ![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+![version](https://img.shields.io/badge/version-1.1.1-blue) ![coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
 
 # Fast Travel From Map
 

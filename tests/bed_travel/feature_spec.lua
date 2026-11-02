@@ -14,10 +14,21 @@ local function vec(x, y, z)
     return { X = x, Y = y, Z = z }
 end
 
--- A fake TMap of the map markers: ForEach gives each key and value as a RemoteUnrealParam.
-local function markers(byName)
+-- A fake TMap of the map markers: ForEach gives each key and value as a RemoteUnrealParam, and
+-- Find gives the value of a key as a RemoteUnrealParam and throws for a missing key, as in UE4SS.
+-- `find` = "throws" makes each Find throw (a UE4SS build without it), "nil" makes it give no value.
+local function markers(byName, find)
     return {
-        ForEach = function(_, fn)
+        walks = 0,
+        Find = function(_, key)
+            if find == "throws" then error("no Find") end
+            if find == "nil" then return fakes.param(nil) end
+            local marker = byName[key]
+            if marker == nil then error("key not found") end
+            return fakes.param(marker)
+        end,
+        ForEach = function(self, fn)
+            self.walks = self.walks + 1
             for name, marker in pairs(byName) do
                 fn(
                     fakes.param({
@@ -446,6 +457,26 @@ describe("bed_travel", function()
             env.tick()
             assert.are_not.same(GOLD, lastColor())
         end)
+    end)
+
+    describe("the bed icon lookup", function()
+        it("finds the bed icon by its key and walks no marker", function()
+            tab(MAP_TAB)
+            env.tick()
+            assert.spy(world.icon.SetIconColor).was.called(1)
+            assert.are.equal(0, world.map.MapMarkers.walks)
+        end)
+
+        for _, mode in ipairs({ "throws", "nil" }) do
+            it("walks the markers when Find " .. (mode == "nil" and "gives nothing" or "throws"), function()
+                world.map.MapMarkers = markers({ BP_Bed_1 = world.icon }, mode)
+                tab(MAP_TAB)
+                env.tick()
+                assert.spy(world.icon.SetIconColor).was.called(1)
+                assert.are.equal(1, world.map.MapMarkers.walks)
+                assert.are.equal(0, lines("WARN"))
+            end)
+        end
     end)
 
     describe("the hover", function()

@@ -42,15 +42,22 @@ local function bedPoint(pc)
 end
 
 -- The bed icon: the map marker whose key is the name of the respawn point actor. Nil when there
--- is no claimed bed or no valid icon (yet). The second result is the count of markers walked.
+-- is no claimed bed or no valid icon (yet). The second result is 1 for a lookup by key, or the
+-- count of markers walked.
 ---@param map UUW_Journal_WorldMap_C
 ---@return UMapMarkerWidgetBase?, integer
 local function bedIcon(map)
     local point = bedPoint(map:GetOwningPlayer())
     if point == nil then return nil, 0 end
     local bedName = point:GetFName():ToString()
-    local found, count = nil, 0
     local markers = map.MapMarkers ---@type any
+    -- The map keys each marker by its UniqueName, the FName of the bed point. Find throws for a
+    -- missing key and may be missing in a UE4SS build: the walk below is the fallback.
+    local ok, byKey = pcall(function()
+        return markers:Find(FName(bedName)):get()
+    end)
+    if ok and byKey ~= nil and ctx.valid(byKey) then return byKey, 1 end
+    local found, count = nil, 0
     markers:ForEach(function(key, value)
         count = count + 1
         if key:get():ToString() == bedName then found = value:get() end

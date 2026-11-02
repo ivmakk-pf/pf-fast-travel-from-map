@@ -4,6 +4,12 @@ All notable changes to this mod are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-02
+
+### Changed
+
+- Less work while the map is open: the mod finds your bed icon by its name, not by a check of every icon on the map.
+
 ## [1.1.0] - 2026-11-01
 
 ### Added
