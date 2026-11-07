@@ -41,6 +41,30 @@ describe("bed_hover", function()
         end
     end
 
+    -- A fake of the top overlay of the map markers.
+    local function overlay()
+        local o = { children = {}, added = 0 }
+        function o:HasChild(child)
+            for _, c in ipairs(self.children) do
+                if c == child then return true end
+            end
+            return false
+        end
+        function o:AddChildToOverlay(child)
+            table.insert(self.children, child)
+            self.added = self.added + 1
+            return {
+                SetHorizontalAlignment = function(_, v)
+                    self.h = v
+                end,
+                SetVerticalAlignment = function(_, v)
+                    self.v = v
+                end,
+            }
+        end
+        return o
+    end
+
     before_each(function()
         env = fakes.install()
         package.loaded["ftm.bed_travel.hover"] = nil
@@ -48,15 +72,79 @@ describe("bed_hover", function()
         ctx = require("ftm.core.context").new("T")
         ctx.config = { verbose = true }
         hover.install(ctx)
-        map = fakes.object({})
         now = 100
         current = icon()
+        map = fakes.object({ Markers_Overlay_MovingTargets = overlay() })
         findIcon = spy.new(function()
             return current, 1
         end)
     end)
     after_each(function()
         fakes.restore()
+    end)
+
+    it("logs a first check with no bed icon", function()
+        current = nil
+        tick()
+        ticks(2, 1100)
+        assert.are.equal(1, lines("bed check: no icon at the first check"))
+    end)
+
+    describe("the top layer", function()
+        local top
+
+        before_each(function()
+            top = map.Markers_Overlay_MovingTargets
+        end)
+
+        it("moves the bed icon to the top overlay and keeps the slot centered", function()
+            tick()
+            assert.is_true(top:HasChild(current))
+            assert.are.equal(2, top.h)
+            assert.are.equal(2, top.v)
+            assert.are.equal(1, lines("bed icon raised"))
+        end)
+
+        it("moves it only once", function()
+            ticks(30)
+            assert.are.equal(1, top.added)
+        end)
+
+        it("moves a new bed icon at once when the game makes it", function()
+            hover.onBedMarkerCreated(map, findIcon)
+            assert.is_true(top:HasChild(current))
+        end)
+
+        it("sets the tint of a new bed icon at once when the game makes it", function()
+            hover.onBedMarkerCreated(map, findIcon)
+            assert.spy(current.SetIconColor).was.called_with(current, DIM)
+        end)
+
+        it("ends the wait of a check with no icon when the game makes the bed icon", function()
+            local made = current
+            current = nil
+            tick()
+            current = made
+            hover.onBedMarkerCreated(map, findIcon)
+            tick()
+            assert.spy(current.IsHovered).was.called(1)
+        end)
+
+        it("does nothing when the game makes a marker and no icon is found", function()
+            hover.onBedMarkerCreated(map, function()
+                return nil
+            end)
+            assert.are.equal(0, top.added)
+        end)
+
+        it("warns once and keeps the hover when the move fails", function()
+            top.HasChild = function()
+                error("changed")
+            end
+            ticks(20)
+            assert.are.equal(1, lines("WARN.*bed top"))
+            assert.spy(current.SetIconColor).was.called()
+        end)
     end)
 
     it("sets the dim color at the first check, then the full color while the mouse is on the icon", function()

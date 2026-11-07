@@ -19,9 +19,10 @@ local REQUIRED = { required = true }
 
 local ctx = nil ---@type FtmContext
 local inputLib = nil ---@type any
--- pending: the confirmation window shows the bed. The feature keeps no widget between calls: the
--- game can free a widget while IsValid still reads true, so each call gets the map again.
-local state = { pending = false, mapHooked = false } ---@type { pending: boolean, mapHooked: boolean }
+-- pending: the confirmation window shows the bed. markerKey: the map key of the bed marker, a plain
+-- string. The feature keeps no widget between calls: the game can free a widget while IsValid still
+-- reads true, so each call gets the map again.
+local state = { pending = false, mapHooked = false } ---@type { pending: boolean, mapHooked: boolean, markerKey: string?, byLocation: boolean? }
 
 -- Shows the game's confirmation window with the bed, or collapses it.
 local function showWindow(map, show)
@@ -41,28 +42,87 @@ local function bedPoint(pc)
     return nil
 end
 
--- The bed icon: the map marker whose key is the name of the respawn point actor. Nil when there
--- is no claimed bed or no valid icon (yet). The second result is 1 for a lookup by key, or the
--- count of markers walked.
+---@return Vec3?
+local function plainVec(v)
+    return ctx.try(function()
+        return { X = v.X, Y = v.Y, Z = v.Z }
+    end)
+end
+
+-- The claimed bed location of the local player. It stays set while the respawn point actor is
+-- streamed out, and it is zero only without a claimed bed.
+---@return Vec3?
+local function bedLocation(pc)
+    return plainVec(ctx.try(function()
+        return pc.PlayerState.BedRespawnLocation
+    end))
+end
+
+-- Verbose only: one line at each change of the way that the lookup finds the bed marker.
+---@param byLocation boolean
+local function traceLookup(byLocation)
+    if state.byLocation == byLocation then return end
+    state.byLocation = byLocation
+    ctx.trace(byLocation and "bed marker by location (no actor reference)" or "bed marker by actor")
+end
+
+-- True when the marker stands at the bed location. The walk reads each marker, so one that cannot
+-- be read counts as a miss and does not end the walk.
+---@param location Vec3?
+---@return boolean
+local function atBed(marker, location)
+    return ctx.try(function()
+        return logic.sameSpot(plainVec(marker.TargetLocation), location)
+    end) == true
+end
+
+-- The bed icon: the map marker whose key is the name of the respawn point actor. After a travel
+-- the actor can be streamed out, so PlayerState.BedRespawnPoint is empty while the marker stays on
+-- the map. Then the marker must stand at the bed location: a claim made while the old actor was
+-- streamed out leaves the old marker on the map. Nil when there is no claimed bed or no valid icon
+-- (yet). The second result is 1 for a lookup by key, or the count of markers walked.
 ---@param map UUW_Journal_WorldMap_C
 ---@return UMapMarkerWidgetBase?, integer
 local function bedIcon(map)
-    local point = bedPoint(map:GetOwningPlayer())
-    if point == nil then return nil, 0 end
-    local bedName = point:GetFName():ToString()
+    local pc = map:GetOwningPlayer()
+    local point = bedPoint(pc)
+    local location = nil ---@type Vec3?
+    if point ~= nil then
+        state.markerKey = point:GetFName():ToString()
+    else
+        location = bedLocation(pc)
+        if logic.target(location, nil) == nil then return nil, 0 end
+    end
+    local bedName = state.markerKey
     local markers = map.MapMarkers ---@type any
     -- The map keys each marker by its UniqueName, the FName of the bed point. Find throws for a
     -- missing key and may be missing in a UE4SS build: the walk below is the fallback.
-    local ok, byKey = pcall(function()
-        return markers:Find(FName(bedName)):get()
-    end)
-    if ok and byKey ~= nil and ctx.valid(byKey) then return byKey, 1 end
+    local ok, byKey = false, nil
+    if bedName ~= nil then
+        ok, byKey = pcall(function()
+            return markers:Find(FName(bedName)):get()
+        end)
+    end
+    if ok and byKey ~= nil and ctx.valid(byKey) and (point ~= nil or atBed(byKey, location)) then
+        traceLookup(point == nil)
+        return byKey, 1
+    end
     local found, count = nil, 0
     markers:ForEach(function(key, value)
         count = count + 1
-        if key:get():ToString() == bedName then found = value:get() end
+        local name = key:get():ToString()
+        local marker = value:get()
+        if point ~= nil then
+            if name == bedName then found = marker end
+        elseif logic.isBedMarkerKey(name) and atBed(marker, location) then
+            found = marker
+            state.markerKey = name
+        end
     end)
-    if found ~= nil and ctx.valid(found) then return found, count end
+    if found ~= nil and ctx.valid(found) then
+        traceLookup(point == nil)
+        return found, count
+    end
     return nil, count
 end
 
@@ -131,24 +191,14 @@ local function bedTravelOnMapPress(self, _, mouseEvent)
     ctx.trace("bed window opened")
 end
 
----@return Vec3?
-local function plainVec(v)
-    return ctx.try(function()
-        return { X = v.X, Y = v.Y, Z = v.Z }
-    end)
-end
-
 ---@param map UUW_Journal_WorldMap_C
 local function travelToBed(map)
     local pc = map:GetOwningPlayer() ---@type any
     local point = bedPoint(pc)
-    local bedLocation = plainVec(ctx.try(function()
-        return pc.PlayerState.BedRespawnLocation
-    end))
     local pointLocation = point and plainVec(ctx.try(function()
         return point:K2_GetActorLocation()
     end))
-    local goal = point and logic.target(bedLocation, pointLocation)
+    local goal = logic.target(bedLocation(pc), pointLocation)
     if not goal then
         ctx.trace("no bed target")
         return
@@ -183,6 +233,19 @@ local function bedTravelOnCancel()
     ctx.trace("bed pending cleared (cancel)")
 end
 
+-- Runs after the Blueprint body of the map's CreateMapMarker. The game makes every marker again at
+-- a change of the map contexts, so this runs once for each marker: only a read of the key, until
+-- the bed marker comes. The first check of the hover sets the key, usually before the game makes
+-- the markers. Without a key, or when the markers come first, the hover check moves the bed icon,
+-- with one blink.
+local function bedTravelOnMarkerCreated(self, data)
+    if state.markerKey == nil then return end
+    local name = ctx.try(function()
+        return data:get().UniqueName:ToString()
+    end)
+    if name == state.markerKey then hover.onBedMarkerCreated(self:get(), bedIcon) end
+end
+
 -- Runs after the Blueprint body of the map's Tick: each frame while the map shows, on the game
 -- thread. The hover reads only this map and the objects under it, in this call.
 local function bedTravelOnMapTick(self)
@@ -198,6 +261,7 @@ local function armMapHooks()
         ctx.trace("map press hook armed")
     end
     if ctx.hook("bed hover", MAP_BP .. ":Tick", bedTravelOnMapTick) then ctx.trace("map tick hook armed") end
+    ctx.hook("bed marker", MAP_BP .. ":CreateMapMarker", bedTravelOnMarkerCreated)
 end
 
 ---@param tab integer
@@ -218,6 +282,8 @@ end
 -- A level change resets the hover with no object call, and the bed window goes with the old map.
 local function resetForLevel()
     state.pending = false
+    state.markerKey = nil
+    state.byLocation = nil
     hover.reset()
 end
 

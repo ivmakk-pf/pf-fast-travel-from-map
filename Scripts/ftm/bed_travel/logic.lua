@@ -41,6 +41,32 @@ function M.target(bedLocation, pointLocation)
     return nil
 end
 
+-- A map marker stands at the same location as the bed it shows. The tolerance only covers a
+-- rounding of the saved values.
+local SAME_SPOT_CM = 10
+
+-- True when the marker location is the bed location.
+---@param markerLocation Vec3?
+---@param bedLocation Vec3?
+---@return boolean
+function M.sameSpot(markerLocation, bedLocation)
+    if not isSet(markerLocation) or not isSet(bedLocation) then return false end
+    local dx = markerLocation.X - bedLocation.X
+    local dy = markerLocation.Y - bedLocation.Y
+    local dz = markerLocation.Z - bedLocation.Z
+    return dx * dx + dy * dy + dz * dz <= SAME_SPOT_CM * SAME_SPOT_CM
+end
+
+-- The map key of a bed marker starts with the class of the respawn point actor. The marker widget
+-- does not show its type, and a player marker can stand within the tolerance of the bed.
+local BED_KEY_PREFIX = "BP_RespawnPointTemplate_C"
+
+---@param name string the map key of a marker
+---@return boolean
+function M.isBedMarkerKey(name)
+    return name:sub(1, #BED_KEY_PREFIX) == BED_KEY_PREFIX
+end
+
 -- The bed icon tint on the open map. The game draws the icon white (full brightness), so the
 -- hover look is a dim icon that goes back to white while the mouse is on it.
 local HOVER_COLOR = { R = 1, G = 1, B = 1, A = 1 }
