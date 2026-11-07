@@ -120,6 +120,31 @@ describe("iconChanged", function()
     end)
 end)
 
+describe("sameSpot", function()
+    it("matches a marker at the bed location, within the rounding", function()
+        assert.is_true(logic.sameSpot({ X = 100, Y = 200, Z = 300 }, { X = 100, Y = 205, Z = 300 }))
+    end)
+
+    it("does not match a marker away from the bed", function()
+        assert.is_false(logic.sameSpot({ X = 100, Y = 211, Z = 300 }, { X = 100, Y = 200, Z = 300 }))
+    end)
+
+    it("does not match with no location", function()
+        assert.is_false(logic.sameSpot(nil, { X = 1, Y = 2, Z = 3 }))
+        assert.is_false(logic.sameSpot({ X = 0, Y = 0, Z = 0 }, { X = 0, Y = 0, Z = 0 }))
+    end)
+end)
+
+describe("isBedMarkerKey", function()
+    it("matches the key of a respawn point marker", function()
+        assert.is_true(logic.isBedMarkerKey("BP_RespawnPointTemplate_C_2147481234"))
+    end)
+
+    it("does not match another marker", function()
+        assert.is_false(logic.isBedMarkerKey("LocalPlayer"))
+    end)
+end)
+
 describe("onLedgerTab", function()
     it("arms the map hook and starts the hover on the map tab", function()
         assert.are.equal("map", logic.onLedgerTab(true, false))

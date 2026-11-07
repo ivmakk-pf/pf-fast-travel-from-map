@@ -4,6 +4,17 @@ All notable changes to this mod are documented in this file. The format is based
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-07
+
+### Changed
+
+- Your bed icon stays on the map when the game setting Show Location Indicators is off.
+
+### Fixed
+
+- A click on your bed icon opens its travel window after a fast travel too. Before, the icon could stop taking clicks.
+- A click on your bed icon opens its travel window when a quest icon or a fast-travel icon overlaps it. The bed icon now stays on top.
+
 ## [1.1.1] - 2026-11-02
 
 ### Changed

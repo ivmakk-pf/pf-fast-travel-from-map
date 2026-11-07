@@ -8,6 +8,7 @@ local CONFIRM = WORLD_MAP .. ":HandleFastTravelConfirmationConfirmed"
 local CANCEL = WORLD_MAP .. ":HandleFastTravelConfirmationCancelled"
 local PRESS = "/Game/Permafrost/UI/Journal/Map/UW_Journal_WorldMap.UW_Journal_WorldMap_C:OnMouseButtonDown"
 local TICK = PRESS:gsub(":OnMouseButtonDown$", ":Tick")
+local CREATE = PRESS:gsub(":OnMouseButtonDown$", ":CreateMapMarker")
 local INPUT_LIB = "/Script/Engine.Default__KismetInputLibrary"
 local MAP_TAB = require("ftm.fast_travel.logic").MAP_TAB
 
@@ -44,6 +45,16 @@ local function markers(byName, find)
     }
 end
 
+-- The top overlay of a map, with the bed icon in it already.
+local function overlays(map)
+    map.Markers_Overlay_MovingTargets = {
+        HasChild = function()
+            return true
+        end,
+    }
+    return map
+end
+
 describe("bed_travel", function()
     local env, ctx, world
 
@@ -59,7 +70,7 @@ describe("bed_travel", function()
     local function newWorld()
         local w = {}
         w.point = fakes.object({
-            name = "BP_Bed_1",
+            name = "BP_RespawnPointTemplate_C_1",
             K2_GetActorLocation = function()
                 return vec(7, 8, 9)
             end,
@@ -85,15 +96,15 @@ describe("bed_travel", function()
             UIManagerComp = { CloseLedger = spy.new(function() end) },
             TeleportToLocation = spy.new(function() end),
         }
-        w.map = fakes.object({
+        w.map = overlays(fakes.object({
             class = "UW_Journal_WorldMap_C",
-            MapMarkers = markers({ BP_Bed_1 = w.icon }),
+            MapMarkers = markers({ BP_RespawnPointTemplate_C_1 = w.icon }),
             ["World Map Manager"] = w.manager,
             GetOwningPlayer = function()
                 return w.pc
             end,
             HandleFastTravelDestinationSelectionChanged = spy.new(function() end),
-        })
+        }))
         w.ledger = fakes.object({ Panel_Map = w.map })
         w.pc.UIManagerComp = fakes.object({ CloseLedger = w.pc.UIManagerComp.CloseLedger, LedgerMenu = w.ledger })
         w.ui = fakes.object({ class = "BPC_UserInterfaceManager_C", LedgerMenu = w.ledger })
@@ -102,14 +113,14 @@ describe("bed_travel", function()
 
     -- A second map widget in the ledger, as after the game makes the map again.
     local function newMap()
-        local map = fakes.object({
+        local map = overlays(fakes.object({
             class = "UW_Journal_WorldMap_C",
-            MapMarkers = markers({ BP_Bed_1 = world.icon }),
+            MapMarkers = markers({ BP_RespawnPointTemplate_C_1 = world.icon }),
             GetOwningPlayer = function()
                 return world.pc
             end,
             HandleFastTravelDestinationSelectionChanged = spy.new(function() end),
-        })
+        }))
         world.ledger.Panel_Map = map
         return map
     end
@@ -258,6 +269,14 @@ describe("bed_travel", function()
 
         it("does nothing with no claimed bed", function()
             world.pc.PlayerState.BedRespawnPoint = nil
+            press()
+            assert.are.equal(0, #windowCalls())
+        end)
+
+        it("does nothing when the bed claim is gone", function()
+            world.pc.PlayerState.BedRespawnPoint = nil
+            world.pc.PlayerState.BedRespawnLocation = vec(0, 0, 0)
+            world.icon.TargetLocation = vec(0, 0, 0)
             press()
             assert.are.equal(0, #windowCalls())
         end)
@@ -482,7 +501,7 @@ describe("bed_travel", function()
 
         for _, mode in ipairs({ "throws", "nil" }) do
             it("walks the markers when Find " .. (mode == "nil" and "gives nothing" or "throws"), function()
-                world.map.MapMarkers = markers({ BP_Bed_1 = world.icon }, mode)
+                world.map.MapMarkers = markers({ BP_RespawnPointTemplate_C_1 = world.icon }, mode)
                 tab(MAP_TAB)
                 tick()
                 assert.spy(world.icon.SetIconColor).was.called(1)
@@ -490,6 +509,158 @@ describe("bed_travel", function()
                 assert.are.equal(0, lines("WARN"))
             end)
         end
+
+        describe("a new marker", function()
+            local function created(name)
+                env.hooks[CREATE](
+                    fakes.param(world.map),
+                    fakes.param({
+                        UniqueName = {
+                            ToString = function()
+                                return name
+                            end,
+                        },
+                    })
+                )
+            end
+
+            local function moves()
+                return world.map.Markers_Overlay_MovingTargets.moved or 0
+            end
+
+            before_each(function()
+                local top = world.map.Markers_Overlay_MovingTargets
+                top.HasChild = function()
+                    return false
+                end
+                top.AddChildToOverlay = function(self)
+                    self.moved = (self.moved or 0) + 1
+                    return { SetHorizontalAlignment = function() end, SetVerticalAlignment = function() end }
+                end
+                tab(MAP_TAB)
+            end)
+
+            it("does nothing before the key of the bed marker is known", function()
+                created("BP_RespawnPointTemplate_C_1")
+                assert.are.equal(0, moves())
+            end)
+
+            it("moves only the bed marker, in the frame that makes it", function()
+                tick()
+                local before = moves()
+                created("Other")
+                assert.are.equal(before, moves())
+                created("BP_RespawnPointTemplate_C_1")
+                assert.are.equal(before + 1, moves())
+            end)
+        end)
+
+        describe("while the respawn point actor is streamed out", function()
+            before_each(function()
+                world.pc.PlayerState.BedRespawnPoint = nil
+                world.icon.TargetLocation = vec(1, 2, 3)
+            end)
+
+            it("finds the marker at the bed location", function()
+                world.map.MapMarkers = markers({
+                    Other = fakes.object({ TargetLocation = vec(900, 900, 900) }),
+                    BP_RespawnPointTemplate_C_1 = world.icon,
+                })
+                tab(MAP_TAB)
+                tick()
+                assert.spy(world.icon.SetIconColor).was.called(1)
+                assert.are.equal(1, world.map.MapMarkers.walks)
+            end)
+
+            it("takes the bed marker and not the player marker that stands at the bed", function()
+                local player = fakes.object({
+                    TargetLocation = vec(1, 2, 3),
+                    IsHovered = function()
+                        return false
+                    end,
+                    SetIconColor = spy.new(function() end),
+                })
+                world.map.MapMarkers = markers({ LocalPlayer = player, BP_RespawnPointTemplate_C_1 = world.icon })
+                tab(MAP_TAB)
+                tick()
+                assert.spy(world.icon.SetIconColor).was.called(1)
+                assert.spy(player.SetIconColor).was.not_called()
+            end)
+
+            it("takes no player marker when the bed marker is gone", function()
+                local player = fakes.object({
+                    TargetLocation = vec(1, 2, 3),
+                    IsHovered = function()
+                        return false
+                    end,
+                    SetIconColor = spy.new(function() end),
+                })
+                world.map.MapMarkers = markers({ LocalPlayer = player })
+                tab(MAP_TAB)
+                tick()
+                assert.spy(player.SetIconColor).was.not_called()
+            end)
+
+            it("walks once and then uses the key", function()
+                tab(MAP_TAB)
+                tick()
+                tick()
+                assert.are.equal(1, world.map.MapMarkers.walks)
+            end)
+
+            it("does not take the marker of an old key away from the bed", function()
+                tab(MAP_TAB)
+                tick()
+                world.pc.PlayerState.BedRespawnLocation = vec(500, 500, 500)
+                tick()
+                assert.spy(world.icon.SetIconColor).was.called(1)
+            end)
+
+            it("skips a marker that cannot be read and keeps the hover", function()
+                local broken = setmetatable({}, {
+                    __index = function()
+                        error("freed")
+                    end,
+                })
+                world.map.MapMarkers = markers({ Broken = broken, BP_RespawnPointTemplate_C_1 = world.icon })
+                tab(MAP_TAB)
+                tick()
+                assert.spy(world.icon.SetIconColor).was.called(1)
+                assert.are.equal(0, lines("WARN"))
+            end)
+
+            it("logs the lookup by location again after a level change", function()
+                tab(MAP_TAB)
+                tick()
+                env.loadMap.pre[1]()
+                tab(MAP_TAB)
+                tick()
+                assert.are.equal(2, lines("bed marker by location"))
+            end)
+
+            it("logs the lookup by location once", function()
+                tab(MAP_TAB)
+                tick()
+                tick()
+                assert.are.equal(1, lines("bed marker by location"))
+            end)
+
+            it("logs the change back to the actor reference", function()
+                tab(MAP_TAB)
+                tick()
+                world.pc.PlayerState.BedRespawnPoint = world.point
+                tick()
+                assert.are.equal(1, lines("bed marker by actor"))
+            end)
+
+            it("opens the window and travels to the bed location", function()
+                tab(MAP_TAB)
+                press()
+                assert.are.equal(1, #windowCalls())
+                confirm()
+                assert.spy(world.pc.TeleportToLocation).was.called_with(world.pc, vec(1, 2, 3))
+            end)
+        end)
     end)
 
     describe("the hover", function()

@@ -13,6 +13,7 @@ local CHECK_S = 0.05 - 1e-6 -- 50 ms; the small margin keeps a check at exactly 
 -- After a check with no bed icon, the next check waits 1 s: with a claimed bed whose marker is not
 -- on the map, each check walks all markers, so the walk stays rare.
 local MISS_S = 1.0 - 1e-6
+local ALIGN_CENTER = 2 -- EHorizontalAlignment and EVerticalAlignment: the slot of a map marker
 
 local ctx = nil ---@type FtmContext
 
@@ -60,6 +61,26 @@ local function follow(address)
     state.lastIcon = address
 end
 
+-- Moves the bed icon into the moving-targets overlay, which the game stacks above the overlay of
+-- all other markers: an icon there takes the mouse first. Only the player markers are in it, and
+-- they stay, so one move holds until the game makes the bed marker again. The game makes every
+-- marker again at each change of the map contexts: at a map open and at a travel from the map.
+-- AddChildToOverlay takes the icon out of its old parent. Runs on the local machine: these are
+-- widgets of this player.
+local function moveToTop(map, icon)
+    local top = map.Markers_Overlay_MovingTargets
+    if top:HasChild(icon) then return end
+    local slot = top:AddChildToOverlay(icon)
+    slot:SetHorizontalAlignment(ALIGN_CENTER)
+    slot:SetVerticalAlignment(ALIGN_CENTER)
+    ctx.trace("bed icon raised")
+end
+
+local function safeMoveToTop(map, icon)
+    local ok, err = pcall(moveToTop, map, icon)
+    if not ok then ctx.warnOnce("bed top", "bed top: " .. tostring(err)) end
+end
+
 ---@param map any
 ---@param findIcon BedIconFinder
 local function check(map, findIcon)
@@ -68,7 +89,12 @@ local function check(map, findIcon)
     if icon ~= nil and not ctx.valid(icon) then icon = nil end
     state.markers = markers
     follow(addressOf(icon))
-    if icon == nil then return false end
+    if icon == nil then
+        if state.checks == 1 then ctx.trace("bed check: no icon at the first check") end
+        return false
+    end
+    local refresh = logic.refreshTint(state.checks)
+    if state.color == nil or refresh then safeMoveToTop(map, icon) end
     local hovered = icon:IsHovered() == true
     if state.hovered ~= nil and hovered ~= state.hovered then
         ctx.trace(hovered and "bed hover on" or "bed hover off")
@@ -76,7 +102,7 @@ local function check(map, findIcon)
     state.hovered = hovered
     -- The colors are constant tables, so a compare by identity finds a change.
     local color = logic.iconColor(hovered, selected)
-    if color ~= state.color or logic.refreshTint(state.checks) then
+    if color ~= state.color or refresh then
         icon:SetIconColor(color)
         state.color = color
     end
@@ -86,6 +112,19 @@ end
 ---@param context FtmContext
 function M.install(context)
     ctx = context
+end
+
+-- Runs after the game makes a map marker. In this frame nothing of the new marker is on screen, so
+-- the move of a new bed icon shows no blink, and its tint shows no step from the game's white. The
+-- icon is on the map now, so a wait after a check with no icon ends: the hover look comes at once.
+---@param map any
+---@param findIcon BedIconFinder
+function M.onBedMarkerCreated(map, findIcon)
+    local icon = findIcon(map)
+    if icon == nil then return end
+    safeMoveToTop(map, icon)
+    icon:SetIconColor(logic.iconColor(false, selected))
+    state.wait = nil
 end
 
 -- Runs from the hook of the map's Tick, after its body. `now` is the clock time in seconds. The map
